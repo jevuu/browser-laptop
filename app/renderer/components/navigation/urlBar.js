@@ -224,7 +224,6 @@ class UrlBar extends React.Component {
 
   onBlur (e) {
     window.getSelection().empty()
-    this.inFocus = false
     windowActions.urlBarOnBlur(getCurrentWindowId(), e.target.value, this.props.urlbarLocation, eventElHasAncestorWithClasses(e, ['urlBarSuggestions', 'urlbarForm']))
   }
 
