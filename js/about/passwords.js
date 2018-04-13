@@ -233,11 +233,12 @@ class AboutPasswords extends React.Component {
     return <div className={css(styles.passwordsPage)}>
       <h1 data-l10n-id='passwordsTitle' />
       <div className={css(styles.passwordInstructions)}> 
-        <span data-l10n-id='passwordDisableInstructions' />
-        <label className={css(styles.passwordInstructionsLink)} data-l10n-id={isDarwin ? 'passwordInstructionsLinkDarwin' : 'passwordInstructionsLink'}
-            onClick={aboutActions.createTabRequested.bind(null, {
-              url: 'about:preferences#security'
-            })} />
+        <span data-l10n-id='passwordDisableInstructions' />&nbsp;
+        <span className={css(styles.passwordInstructionsLink)}
+          data-l10n-id={isDarwin?'passwordInstructionsLinkDarwin':'passwordInstructionsLink'}
+          onClick={aboutActions.createTabRequested.bind(null, {
+            url: 'about:preferences#security'
+        })} />
       </div>
       {
         this.isPasswordsEmpty && this.isSitesEmpty
