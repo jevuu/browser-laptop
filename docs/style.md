@@ -557,7 +557,7 @@ styles = StyleSheet.create({
 
 #### Having to parse integers
 
-Sometimes you'll have to get the number of a given property written in pixels. You're incouraged of parsing that value instead of creating a new class:
+Sometimes you'll have to get the number of a given property written in pixels. You're encouraged to parse that value instead of creating a new class:
 
 ```js
 // global.js
@@ -714,7 +714,7 @@ The main gotcha of font-awesome is that it can't be included together with Aphro
 <span className={css(globalStyles.appIcons.clipboard, styles.makeItGreen)} />
 ```
 
-That's because Aphrodite concatenate all strings after compiling, making `fa-` class useless.
+That's because Aphrodite concatenates all strings after compiling, making `fa-` class useless.
 
 Once we have our own set of icons we can remove that, but for now you'll need to apply another element to have your icon:
 
@@ -730,7 +730,7 @@ Once we have our own set of icons we can remove that, but for now you'll need to
 
 ## Testing styled-components
 
-As styles are converted from LESS to Aphrodite, we will lose the ability to control the generated class names. This means for our webdriver tests will no longer be able to use class names as selectors. Instead we will be adding the attribute `data-test-id` to elements. This approach gives us the added benefit of differentiating between code meant for presentation and code meant for testing.
+As styles are converted from LESS to Aphrodite, we will lose the ability to control the generated class names. This means for our webdriver, tests will no longer be able to use class names as selectors. Instead, we will be adding the attribute `data-test-id` to elements. This approach gives us the added benefit of differentiating between code meant for presentation and code meant for testing.
 
 An example would be moving:
 
