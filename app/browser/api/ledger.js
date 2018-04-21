@@ -515,9 +515,6 @@ const synopsisNormalizer = (state, changedPublisher, returnState = true, prune =
       publisher.weight = 0
       return publisher
     })
-
-    // sync app store
-    state = ledgerState.changePinnedValues(state, dataPinned)
   } else if (dataUnPinned.length === 0 && pinnedTotal < 100) {
     // when you don't have any unpinned sites and pinned total is less then 100 %
     let changedObject = dataPinned.find(publisher => publisher.publisherKey === changedPublisher)
@@ -532,9 +529,6 @@ const synopsisNormalizer = (state, changedPublisher, returnState = true, prune =
       dataPinned = module.exports.normalizePinned(dataPinned, pinnedTotal, 100, false)
       dataPinned = module.exports.roundToTarget(dataPinned, 100, 'pinPercentage')
     }
-
-    // sync app store
-    state = ledgerState.changePinnedValues(state, dataPinned)
   } else {
     // unpinned publishers
     dataUnPinned = dataUnPinned.map((result) => {
@@ -2397,6 +2391,10 @@ const run = (state, delayTime) => {
       fields.forEach((field) => {
         const max = (result.length > 0) ? 45 : 19
 
+        if (!field) {
+          return
+        }
+
         if (typeof field !== 'string') field = field.toString()
         if (field.length < max) {
           let spaces = ' '.repeat(max - field.length)
@@ -2404,6 +2402,7 @@ const run = (state, delayTime) => {
         } else {
           field = field.substr(0, max)
         }
+
         result += ' ' + field
       })
 
@@ -2687,10 +2686,28 @@ const onMediaRequest = (state, xhr, type, details) => {
     return state
   }
 
-  const tabId = details.get('tabId')
   const parsed = ledgerUtil.getMediaData(xhr, type, details)
   if (parsed == null) {
     return state
+  }
+
+  if (Array.isArray(parsed)) {
+    parsed.forEach(data => {
+      if (data) {
+        state = module.exports.processMediaData(state, data, type, details)
+      }
+    })
+  } else {
+    state = module.exports.processMediaData(state, parsed, type, details)
+  }
+
+  return state
+}
+
+const processMediaData = (state, parsed, type, details) => {
+  let tabId = tabState.TAB_ID_NONE
+  if (details) {
+    tabId = details.get('tabId')
   }
 
   const mediaId = ledgerUtil.getMediaId(parsed, type)
@@ -2774,7 +2791,7 @@ const onMediaRequest = (state, xhr, type, details) => {
 
     if (_internal.verboseP) {
       console.log('\ngetPublisherFromMediaProps mediaProps=' + JSON.stringify(mediaProps, null, 2) + '\nresponse=' +
-                  JSON.stringify(response, null, 2))
+        JSON.stringify(response, null, 2))
     }
 
     appActions.onLedgerMediaPublisher(mediaKey, response, duration, revisited)
@@ -3061,7 +3078,8 @@ const getMethods = () => {
     referralCheck,
     roundtrip,
     onFetchReferralHeaders,
-    onReferralRead
+    onReferralRead,
+    processMediaData
   }
 
   let privateMethods = {}

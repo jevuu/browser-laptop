@@ -521,7 +521,6 @@ AppStore
       httpsEverywhere: boolean,
       ledgerPayments: boolean, // false if site should not be paid by the ledger. Defaults to true.
       ledgerPaymentsShown: boolean, // false if site should not be paid by the ledger and should not be shown in the UI. Defaults to true.
-      ledgerPinPercentage: number, // 0 if not pinned, otherwise is pinned with defined percentage
       mediaPermission: boolean,
       midiSysexPermission: boolean,
       notificationsPermission: boolean,
@@ -825,6 +824,7 @@ WindowStore
     top: number // the top position of the popup window
   },
   previewFrameKey: number,
+  quarantineNeeded: boolean, // true if quarantine needed after auto-launching
   searchResults: array, // autocomplete server results if enabled
   ui: {
     bookmarksToolbar: {
