@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     color: 'grey'
   },
   passwordInstructionsLink: {
-    color: 'rgb(255, 80, 0)',
+    color: `${globalStyles.color.braveOrange}`,
     textDecoration: 'underline',
     cursor: 'pointer',
 
