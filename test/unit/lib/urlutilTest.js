@@ -96,7 +96,7 @@ describe('urlutil', function () {
         assert.equal(urlUtil.isNotURL('brave.com/test/cc?_ri_=3vv-8-e.'), false)
       })
       it('is a string with whitespace but has schema', function () {
-        assert.equal(urlUtil.isNotURL('https://wwww.brave.com/test space.jpg'), false)
+        assert.equal(urlUtil.isNotURL('https://wwww.brave.com/test space.jpg'), true)
       })
       it('has custom protocol', function () {
         assert.equal(urlUtil.isNotURL('brave://test'), false)
