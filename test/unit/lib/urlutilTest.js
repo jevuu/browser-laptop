@@ -96,7 +96,7 @@ describe('urlutil', function () {
         assert.equal(urlUtil.isNotURL('brave.com/test/cc?_ri_=3vv-8-e.'), false)
       })
       it('is a string with whitespace but has schema', function () {
-        assert.equal(urlUtil.isNotURL('https://wwww.brave.com/test space.jpg'), true)
+        assert.equal(urlUtil.isNotURL('https://wwww.brave.com/test space.jpg'), false)
       })
       it('has custom protocol', function () {
         assert.equal(urlUtil.isNotURL('brave://test'), false)
@@ -136,7 +136,7 @@ describe('urlutil', function () {
         })
       })
       it('is a string with schema but invalid domain name', function () {
-        assert.equal(urlUtil.isNotURL('https://www.bra ve.com/test space.jpg'), false)
+        assert.equal(urlUtil.isNotURL('https://www.bra ve.com/test space.jpg'), true)
       })
       it('contains more than one word', function () {
         assert.equal(urlUtil.isNotURL('brave is cool'), true)
