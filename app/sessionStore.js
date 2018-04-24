@@ -19,6 +19,7 @@ const Immutable = require('immutable')
 const app = electron.app
 const compareVersions = require('compare-versions')
 const merge = require('deepmerge')
+const {execSync} = require('child_process')
 
 // Constants
 const UpdateStatus = require('../js/constants/updateStatus')
@@ -822,11 +823,61 @@ module.exports.runPreMigrations = (data) => {
     delete data.sites
   }
 
-  if (data.lastAppVersion) {
+  if (data.lastAppVersion || data.quarantineNeeded) {
+    // with version 0.22.13, any file downloaded (including the update itself) would get
+    // quarantined on macOS (per work done with https://github.com/brave/muon/pull/484)
+    // this functionality was then reverted with https://github.com/brave/muon/pull/570
+    //
+    // To fix the executable, we need to manually un-quarantine the Brave executable so that it works as expected
+    if (process.platform === 'darwin' && (compareVersions(data.lastAppVersion, '0.22.13') === 0 || data.quarantineNeeded)) {
+      const unQuarantine = (appPath) => {
+        try {
+          execSync(`xattr -d com.apple.quarantine "${appPath}"`)
+          console.log(`Quarantine attribute has been removed from ${appPath}`)
+        } catch (e) {
+          console.error(`Failed to remove quarantine attribute from ${appPath}: `, e)
+        }
+      }
+
+      console.log('Update was downloaded from 0.22.13' + data.quarantineNeeded ? ' (first launch after auto-update)' : '')
+
+      // Un-quarantine default path
+      const defaultAppPath = '/Applications/Brave.app'
+      unQuarantine(defaultAppPath)
+
+      // Un-quarantine custom path
+      const appPath = app.getPath('exe')
+      const appIndex = appPath.indexOf('.app') + '.app'.length
+      if (appPath && appIndex > 4) {
+        // Remove the `Contents`/`MacOS`/`Brave` parts from path
+        const runningAppPath = appPath.substring(0, appIndex)
+        if (runningAppPath.startsWith('/private/var/folders')) {
+          // This is true when Squirrel re-launches Brave after an auto-update
+          // File system is read-only; the xattr command would fail
+          data.quarantineNeeded = true
+        } else if (runningAppPath !== defaultAppPath) {
+          // Path is the installed location
+          unQuarantine(runningAppPath)
+          data.quarantineNeeded = false
+        }
+      }
+    }
+
+    let runHSTSCleanup = false
+    try { runHSTSCleanup = compareVersions(data.lastAppVersion, '0.22.13') < 1 } catch (e) {}
+
+    if (runHSTSCleanup) {
+      filtering.clearHSTSData()
+    }
+
     // Force WidevineCdm to be upgraded when last app version <= 0.18.25
     let runWidevineCleanup = false
+    let formatPublishers = false
 
-    try { runWidevineCleanup = compareVersions(data.lastAppVersion, '0.18.25') < 1 } catch (e) {}
+    try {
+      runWidevineCleanup = compareVersions(data.lastAppVersion, '0.18.25') < 1
+      formatPublishers = compareVersions(data.lastAppVersion, '0.22.3') < 1
+    } catch (e) {}
 
     if (runWidevineCleanup) {
       const fs = require('fs-extra')
@@ -836,6 +887,23 @@ module.exports.runPreMigrations = (data) => {
           console.error(`Could not remove ${wvExtPath}`)
         }
       })
+    }
+
+    if (formatPublishers) {
+      const publishers = data.ledger.synopsis.publishers
+
+      if (publishers && Object.keys(publishers).length > 0) {
+        Object.entries(publishers).forEach((item) => {
+          const publisherKey = item[0]
+          const publisher = item[1]
+          const siteKey = `https?://${publisherKey}`
+          if (data.siteSettings[siteKey] == null || publisher.faviconName == null) {
+            return
+          }
+
+          data.siteSettings[siteKey].siteName = publisher.faviconName
+        })
+      }
     }
 
     // Bookmark cache was generated wrongly on and before 0.20.25 from 0.19.x upgrades

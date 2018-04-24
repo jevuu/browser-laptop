@@ -16,9 +16,9 @@ const settings = require('../../../js/constants/settings')
 
 // Utils
 const getSetting = require('../../../js/settings').getSetting
-const siteSettings = require('../../../js/state/siteSettings')
-const urlUtil = require('../../../js/lib/urlutil')
 const {makeImmutable, isMap} = require('../../common/state/immutableUtil')
+const urlParse = require('../../common/urlParse')
+const getBaseDomain = require('../../../js/lib/baseDomain').getBaseDomain
 
 const validateState = function (state) {
   state = makeImmutable(state)
@@ -67,12 +67,28 @@ const ledgerState = {
     return state.setIn(['ledger', 'locations', url, prop], value)
   },
 
+  getVerifiedPublisherLocation: (state, url) => {
+    state = validateState(state)
+    if (url == null) {
+      return null
+    }
+
+    let publisherKey = state.getIn(['ledger', 'locations', url, 'publisher'])
+
+    if (!publisherKey) {
+      const parsedUrl = urlParse(url) || {}
+      if (parsedUrl.hostname != null) {
+        publisherKey = getBaseDomain(parsedUrl.hostname)
+      }
+    }
+    return publisherKey
+  },
+
   getLocationProp: (state, url, prop) => {
     state = validateState(state)
     if (url == null || prop == null) {
       return null
     }
-
     return state.getIn(['ledger', 'locations', url, prop])
   },
 
@@ -356,24 +372,6 @@ const ledgerState = {
     }))
   },
 
-  changePinnedValues: (state, publishers) => {
-    state = validateState(state)
-    if (publishers == null) {
-      return state
-    }
-
-    publishers = makeImmutable(publishers)
-    publishers.forEach((item) => {
-      const publisherKey = item.get('publisherKey')
-      const pattern = urlUtil.getHostPattern(publisherKey)
-      const percentage = item.get('pinPercentage')
-      let newSiteSettings = siteSettings.mergeSiteSetting(state.get('siteSettings'), pattern, 'ledgerPinPercentage', percentage)
-      state = state.set('siteSettings', newSiteSettings)
-    })
-
-    return state
-  },
-
   /**
    * PROMOTIONS
    */
@@ -570,6 +568,16 @@ const ledgerState = {
     }
 
     return state.setIn(['ledger', 'about', prop], value)
+  },
+
+  getAboutProp: (state, prop) => {
+    state = validateState(state)
+
+    if (prop == null) {
+      return null
+    }
+
+    return state.getIn(['ledger', 'about', prop])
   }
 }
 

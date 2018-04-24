@@ -18,6 +18,7 @@ const pageDataState = require('../../common/state/pageDataState')
 const updateState = require('../../common/state/updateState')
 
 // Utils
+const windows = require('../windows')
 const ledgerApi = require('../../browser/api/ledger')
 const ledgerNotifications = require('../../browser/api/ledgerNotifications')
 const {makeImmutable} = require('../../common/state/immutableUtil')
@@ -152,19 +153,22 @@ const ledgerReducer = (state, action, immutableAction) => {
               state = ledgerApi.verifiedP(state, publisherKey)
               break
             }
-          case 'ledgerPinPercentage':
-            {
-              const value = action.get('value')
-              const publisher = ledgerState.getPublisher(state, publisherKey)
-              if (publisher.isEmpty() || publisher.get('pinPercentage') === value) {
-                break
-              }
-              state = ledgerState.setPublishersProp(state, publisherKey, 'pinPercentage', value)
-              ledgerApi.savePublisherData(publisherKey, 'pinPercentage', value)
-              state = ledgerApi.updatePublisherInfo(state, publisherKey)
-              break
-            }
         }
+        break
+      }
+    case appConstants.APP_ON_LEDGER_PIN_PUBLISHER:
+      {
+        const value = action.get('value')
+        const publisherKey = action.get('publisherKey')
+        const publisher = ledgerState.getPublisher(state, publisherKey)
+
+        if (publisher.isEmpty() || publisher.get('pinPercentage') === value) {
+          break
+        }
+
+        state = ledgerState.setPublishersProp(state, publisherKey, 'pinPercentage', value)
+        ledgerApi.savePublisherData(publisherKey, 'pinPercentage', value)
+        state = ledgerApi.updatePublisherInfo(state, publisherKey)
         break
       }
     case appConstants.APP_REMOVE_SITE_SETTING:
@@ -418,7 +422,7 @@ const ledgerReducer = (state, action, immutableAction) => {
       }
     case appConstants.APP_ON_LEDGER_MEDIA_DATA:
       {
-        state = ledgerApi.onMediaRequest(state, action.get('url'), action.get('type'), action.get('tabId'))
+        state = ledgerApi.onMediaRequest(state, action.get('url'), action.get('type'), action.get('details'))
         break
       }
     case appConstants.APP_ON_PRUNE_SYNOPSIS:
@@ -460,8 +464,7 @@ const ledgerReducer = (state, action, immutableAction) => {
       }
     case appConstants.APP_ON_REFERRAL_CODE_READ:
       {
-        state = updateState.setUpdateProp(state, 'referralDownloadId', action.get('downloadId'))
-        state = updateState.setUpdateProp(state, 'referralPromoCode', action.get('promoCode'))
+        state = ledgerApi.onReferralRead(state, action.get('body'), windows.getActiveWindowId())
         break
       }
     case appConstants.APP_ON_REFERRAL_CODE_FAIL:
@@ -472,6 +475,11 @@ const ledgerReducer = (state, action, immutableAction) => {
     case appConstants.APP_CHECK_REFERRAL_ACTIVITY:
       {
         state = ledgerApi.checkReferralActivity(state)
+        break
+      }
+    case appConstants.APP_ON_FETCH_REFERRAL_HEADERS:
+      {
+        state = ledgerApi.onFetchReferralHeaders(state, action.get('error'), action.get('response'), action.get('body'))
         break
       }
     case appConstants.APP_ON_REFERRAL_ACTIVITY:

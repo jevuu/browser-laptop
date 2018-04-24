@@ -252,7 +252,7 @@ const getMediaKey = (id, type) => {
   return `${type.toLowerCase()}_${id}`
 }
 
-const getMediaData = (xhr, type) => {
+const getMediaData = (xhr, type, details) => {
   let result = null
 
   if (xhr == null || type == null) {
@@ -262,36 +262,66 @@ const getMediaData = (xhr, type) => {
   const parsedUrl = urlParse(xhr)
   const query = parsedUrl && parsedUrl.query
 
-  if (!parsedUrl || !query) {
+  if (!parsedUrl) {
     return null
   }
 
   switch (type) {
     case ledgerMediaProviders.YOUTUBE:
       {
-        result = queryString.parse(parsedUrl.query)
+        if (!query) {
+          return null
+        }
+
+        result = queryString.parse(query)
         break
       }
     case ledgerMediaProviders.TWITCH:
       {
-        result = queryString.parse(parsedUrl.query)
-        if (!result.data) {
+        const uploadData = details.get('uploadData') || Immutable.List()
+
+        if (uploadData.size === 0) {
           result = null
           break
         }
 
-        let obj = Buffer.from(result.data, 'base64').toString('utf8')
+        let params = uploadData.reduce((old, item) => {
+          const bytes = item.get('bytes')
+          let data = ''
+          if (bytes) {
+            data = Buffer.from(bytes).toString('utf8') || ''
+          }
+          return old + data
+        }, '')
+
+        if (!params || params.length === 0) {
+          result = null
+          break
+        }
+
+        const paramQuery = queryString.parse(params)
+
+        if (!paramQuery || !paramQuery.data) {
+          result = null
+          break
+        }
+
+        let obj = Buffer.from(paramQuery.data, 'base64').toString('utf8')
         if (obj == null) {
           result = null
           break
         }
 
+        let parsed
         try {
-          result = JSON.parse(obj)
+          parsed = JSON.parse(obj)
         } catch (error) {
           result = null
-          console.error(error.toString())
+          console.error(error.toString(), obj)
+          break
         }
+
+        result = parsed
         break
       }
   }
@@ -425,6 +455,15 @@ const getTwitchDuration = (state, data, mediaKey) => {
   }
 
   const previousData = ledgerVideoCache.getDataByVideoId(state, mediaKey)
+
+  // remove duplicate events
+  if (
+    previousData.get('event') === data.event &&
+    previousData.get('time') === data.properties.time
+  ) {
+    return null
+  }
+
   const oldEvent = previousData.get('event')
   const twitchMinimumSeconds = 10
 
@@ -524,7 +563,10 @@ const getMediaProvider = (url, firstPartyUrl, referrer) => {
       (firstPartyUrl && firstPartyUrl.startsWith('https://www.twitch.tv/')) ||
       (referrer && referrer.startsWith('https://player.twitch.tv/'))
     ) &&
-    url.startsWith('https://api.mixpanel.com/')
+    (
+      url.includes('.ttvnw.net/v1/segment/') ||
+      url.includes('https://ttvnw.net/v1/segment/')
+    )
   ) {
     return ledgerMediaProviders.TWITCH
   }

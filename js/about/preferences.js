@@ -35,6 +35,7 @@ const appConfig = require('../constants/appConfig')
 const preferenceTabs = require('../constants/preferenceTabs')
 const messages = require('../constants/messages')
 const settings = require('../constants/settings')
+const webrtcConstants = require('../constants/webrtcConstants')
 const {changeSetting} = require('../../app/renderer/lib/settingsUtil')
 const {passwordManagers, extensionIds} = require('../constants/passwordManagers')
 const {startsWithOption, newTabMode, bookmarksToolbarMode, fullscreenOption, autoplayOption} = require('../../app/common/constants/settingsEnums')
@@ -45,7 +46,7 @@ const getSetting = require('../settings').getSetting
 const SortableTable = require('../../app/renderer/components/common/sortableTable')
 const searchProviders = require('../data/searchProviders')
 
-const flash = appConfig.resourceNames.FLASH
+const firewall = appConfig.resourceNames.FIREWALL
 
 const isDarwin = navigator.platform === 'MacIntel'
 
@@ -305,21 +306,13 @@ class SecurityTab extends ImmutableComponent {
   constructor (e) {
     super()
     this.clearBrowsingDataNow = this.clearBrowsingDataNow.bind(this)
+    this.onToggleFirewall = this.onToggleFirewall.bind(this)
+  }
+  onToggleFirewall (e) {
+    aboutActions.setResourceEnabled(firewall, e.target.value)
   }
   clearBrowsingDataNow () {
     aboutActions.clearBrowsingDataNow()
-  }
-  onToggleFlash (e) {
-    aboutActions.setResourceEnabled(flash, e.target.value)
-    if (e.target.value !== true) {
-      // When flash is disabled, clear flash approvals
-      aboutActions.clearSiteSettings('flash', {
-        temporary: true
-      })
-      aboutActions.clearSiteSettings('flash', {
-        temporary: false
-      })
-    }
   }
   render () {
     const lastPassPreferencesUrl = ('chrome-extension://' + extensionIds[passwordManagers.LAST_PASS] + '/tabDialog.html?dialog=preferences&cmd=open')
@@ -422,6 +415,34 @@ class SecurityTab extends ImmutableComponent {
       <SettingsList>
         <SettingCheckbox dataL10nId='useSiteIsolation' prefKey={settings.SITE_ISOLATION_ENABLED} settings={this.props.settings} onChangeSetting={this.props.onChangeSetting} />
       </SettingsList>
+      <DefaultSectionTitle data-l10n-id='webrtcPolicy' />
+      <SettingsList>
+        <SettingDropdown
+          value={(
+            getSetting(settings.WEBRTC_POLICY, this.props.settings)
+          )}
+          onChange={changeSetting.bind(
+            null,
+            this.props.onChangeSetting,
+            settings.WEBRTC_POLICY
+          )}>
+          {
+            Object.keys(webrtcConstants)
+              .map((policy) => <option data-l10n-id={policy} value={webrtcConstants[policy]} />)
+          }
+        </SettingDropdown>
+        <div
+          className={css(styles.link)}
+          data-l10n-id='webrtcPolicyExplanation'
+          onClick={aboutActions.createTabRequested.bind(null, {
+            url: 'https://cs.chromium.org/chromium/src/content/public/common/webrtc_ip_handling_policy.h'
+          })}
+        />
+      </SettingsList>
+      <DefaultSectionTitle data-l10n-id='firewall' />
+      <SettingsList>
+        <SettingCheckbox dataL10nId='useFirewall' checked={this.props.braveryDefaults.get(firewall)} onChange={this.onToggleFirewall} />
+      </SettingsList>
       <SitePermissionsPage siteSettings={this.props.siteSettings} names={permissionNames} />
       <div data-l10n-id='requiresRestart' className={css(commonStyles.requiresRestart)} />
     </div>
@@ -432,8 +453,6 @@ class AboutPreferences extends React.Component {
   constructor (props) {
     super(props)
     this.state = {
-      bitcoinOverlayVisible: false,
-      qrcodeOverlayVisible: false,
       paymentHistoryOverlayVisible: false,
       deletedSitesOverlayVisible: false,
       advancedSettingsOverlayVisible: false,
@@ -455,9 +474,7 @@ class AboutPreferences extends React.Component {
       siteSettings: Immutable.Map(),
       braveryDefaults: Immutable.Map(),
       ledgerData: Immutable.Map(),
-      syncData: Immutable.Map(),
-      firstRecoveryKey: '',
-      secondRecoveryKey: ''
+      syncData: Immutable.Map()
     }
 
     // Similar to tabFromCurrentHash, this allows to set
@@ -502,6 +519,7 @@ class AboutPreferences extends React.Component {
       ledgerRecoveryOverlayVisible: false
     })
     this.forceUpdate()
+    this.removeParams()
   }
 
   enableSyncRestore (enabled) {
@@ -529,6 +547,16 @@ class AboutPreferences extends React.Component {
       newState[params] = true
     }
     this.setState(newState)
+  }
+
+  /**
+   * Using the history API, this removes any parameters
+   * from the current URL, leaving only the needed hash (ex #payments)
+   * This does not reload the page, it only modifies the browser history state,
+   * which replaces what is entered in the address bar
+   */
+  removeParams () {
+    window.history.replaceState(null, null, `#${this.hash}`)
   }
 
   /**
@@ -604,7 +632,7 @@ class AboutPreferences extends React.Component {
       settings.SPELLCHECK_LANGUAGES
     ]
     if (settingsRequiringRestart.includes(key)) {
-      ipc.send(messages.PREFS_RESTART, key, value)
+      aboutActions.requireRestart(key, value)
     }
     if (key === settings.PAYMENTS_ENABLED && value === true) {
       this.createWallet()
@@ -614,15 +642,13 @@ class AboutPreferences extends React.Component {
   setOverlayVisible (isVisible, overlayName) {
     let stateDiff = {}
     stateDiff[`${overlayName}OverlayVisible`] = isVisible
-    if (overlayName === 'addFunds' && isVisible === false) {
-      // Hide the child overlays when the parent is closed
-      stateDiff['bitcoinOverlayVisible'] = false
-      stateDiff['qrcodeOverlayVisible'] = false
-    }
     this.setState(stateDiff)
-    // Tell ledger when Add Funds overlay is closed
-    if (isVisible === false && overlayName === 'addFunds') {
-      appActions.onAddFundsClosed()
+    if (isVisible === false) {
+      // Tell ledger when Add Funds overlay is closed
+      if (overlayName === 'addFunds') {
+        appActions.onAddFundsClosed()
+      }
+      this.removeParams()
     }
   }
 
@@ -698,10 +724,6 @@ class AboutPreferences extends React.Component {
         tab = <PaymentsTab settings={settings} siteSettings={siteSettings}
           braveryDefaults={braveryDefaults} ledgerData={ledgerData}
           onChangeSetting={this.onChangeSetting}
-          firstRecoveryKey={this.state.firstRecoveryKey}
-          secondRecoveryKey={this.state.secondRecoveryKey}
-          bitcoinOverlayVisible={this.state.bitcoinOverlayVisible}
-          qrcodeOverlayVisible={this.state.qrcodeOverlayVisible}
           paymentHistoryOverlayVisible={this.state.paymentHistoryOverlayVisible}
           deletedSitesOverlayVisible={this.state.deletedSitesOverlayVisible}
           advancedSettingsOverlayVisible={this.state.advancedSettingsOverlayVisible}
@@ -769,6 +791,13 @@ const styles = StyleSheet.create({
 
   searchShortcutEntry: {
     fontSize: '1rem'
+  },
+
+  link: {
+    cursor: 'pointer',
+    fontSize: '14px',
+    lineHeight: '3em',
+    textDecoration: 'underline'
   }
 })
 

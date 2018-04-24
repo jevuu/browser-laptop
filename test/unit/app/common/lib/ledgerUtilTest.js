@@ -516,29 +516,129 @@ describe('ledgerUtil unit test', function () {
     })
 
     describe('Twitch', function () {
+      const url = 'https://video-edge-f0f586.sjc01.hls.ttvnw.net/v1/segment/CuDNI7xCy5CGJ8g7G3thdHT26OW_DhnEuVw0tRGN-DKhJxrRTeGe...'
+
       it('null case', function () {
         const result = ledgerUtil.getMediaData(null, ledgerMediaProviders.TWITCH)
         assert.equal(result, null)
       })
 
+      it('uploadData is missing', function () {
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348'
+        }))
+        assert.equal(result, null)
+      })
+
+      it('bytes is missing', function () {
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348',
+          uploadData: []
+        }))
+        assert.equal(result, null)
+      })
+
       it('data is missing', function () {
-        const result = ledgerUtil.getMediaData('https://api.mixpanel.com', ledgerMediaProviders.TWITCH)
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348',
+          uploadData: [{
+            bytes: new Uint8Array([116, 101, 115, 116])
+          }]
+        }))
         assert.equal(result, null)
       })
 
       it('data is empty string', function () {
-        const result = ledgerUtil.getMediaData('https://api.mixpanel.com?data=', ledgerMediaProviders.TWITCH)
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348',
+          uploadData: [{
+            bytes: new Uint8Array([100, 97, 116, 97, 61])
+          }]
+        }))
         assert.equal(result, null)
       })
 
-      it('obj is parsed correctly', function () {
-        const result = ledgerUtil.getMediaData('https://api.mixpanel.com?data=eyJldmVudCI6Im1pbnV0ZS13YXRjaGVkIiwicHJvcGVydGllcyI6eyJjaGFubmVsIjoidHcifX0=', ledgerMediaProviders.TWITCH)
-        assert.deepEqual(result, {
+      it('single event is parsed correctly', function () {
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348',
+          uploadData: [{
+            bytes: new Uint8Array([
+              100, 97, 116, 97, 61, 87, 51, 115, 105, 90, 88, 90, 108, 98, 110, 81, 105, 79, 105,
+              74, 116, 97, 87, 53, 49, 100, 71, 85, 116, 100, 50, 70, 48, 89, 50, 104, 108, 90, 67, 73, 115, 73, 110,
+              66, 121, 98, 51, 66, 108, 99, 110, 82, 112, 90, 88, 77, 105, 79, 110, 115, 105, 89, 50, 104, 104, 98,
+              109, 53, 108, 98, 67, 73, 54, 73, 110, 82, 51, 73, 110, 49, 57, 88, 81, 61, 61
+            ])
+          }]
+        }))
+        assert.deepEqual(result, [{
           event: twitchEvents.MINUTE_WATCHED,
           properties: {
             channel: 'tw'
           }
-        })
+        }])
+      })
+
+      it('multiple events are parsed correctly', function () {
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348',
+          uploadData: [{
+            bytes: new Uint8Array([
+              100, 97, 116, 97, 61, 87, 51, 115, 105, 90, 88, 90, 108, 98, 110, 81, 105, 79, 105,
+              74, 50, 97, 87, 82, 108, 98, 121, 49, 119, 98, 71, 70, 53, 73, 105, 119, 105, 99, 72, 74, 118, 99, 71,
+              86, 121, 100, 71, 108, 108, 99, 121, 73, 54, 101, 121, 74, 106, 97, 71, 70, 117, 98, 109, 86, 115, 73,
+              106, 111, 105, 100, 72, 99, 105, 102, 88, 48, 115, 101, 121, 74, 108, 100, 109, 86, 117, 100, 67, 73, 54,
+              73, 110, 90, 112, 90, 71, 86, 118, 88, 50, 86, 121, 99, 109, 57, 121, 73, 105, 119, 105, 99, 72, 74, 118,
+              99, 71, 86, 121, 100, 71, 108, 108, 99, 121, 73, 54, 101, 121, 74, 106, 97, 71, 70, 117, 98, 109, 86,
+              115, 73, 106, 111, 105, 100, 72, 99, 105, 102, 88, 49, 100
+            ])
+          }]
+        }))
+        assert.deepEqual(result, [{
+          event: twitchEvents.START,
+          properties: {
+            channel: 'tw'
+          }
+        }, {
+          event: twitchEvents.VIDEO_ERROR,
+          properties: {
+            channel: 'tw'
+          }
+        }])
+      })
+
+      it('multiple upload data', function () {
+        const result = ledgerUtil.getMediaData(url, ledgerMediaProviders.TWITCH, Immutable.fromJS({
+          firstPartyUrl: 'https://www.twitch.tv/videos/241926348',
+          uploadData: [
+            {
+              bytes: new Uint8Array([
+                100, 97, 116, 97, 61, 87, 51, 115, 105, 90, 88, 90, 108, 98, 110, 81, 105, 79, 105, 74, 50, 97, 87,
+                82, 108, 98, 121, 49, 119, 98, 71, 70, 53, 73, 105, 119, 105, 99
+              ])
+            },
+            {
+              bytes: new Uint8Array([
+                72, 74, 118, 99, 71, 86, 121, 100, 71, 108, 108, 99, 121, 73, 54, 101, 121, 74,
+                106, 97, 71, 70, 117, 98, 109, 86, 115, 73, 106, 111, 105, 100, 72, 99, 105, 102, 88, 48, 115, 101,
+                121, 74, 108, 100, 109, 86, 117, 100, 67, 73, 54, 73, 110, 90, 112, 90, 71, 86, 118, 88, 50, 86, 121,
+                99, 109, 57, 121, 73, 105, 119, 105, 99, 72, 74, 118, 99, 71, 86, 121, 100, 71, 108, 108, 99, 121,
+                73, 54, 101, 121, 74, 106, 97, 71, 70, 117, 98, 109, 86, 115, 73, 106, 111, 105, 100, 72, 99, 105,
+                102, 88, 49, 100
+              ])
+            }
+          ]
+        }))
+        assert.deepEqual(result, [{
+          event: twitchEvents.START,
+          properties: {
+            channel: 'tw'
+          }
+        }, {
+          event: twitchEvents.VIDEO_ERROR,
+          properties: {
+            channel: 'tw'
+          }
+        }])
       })
     })
   })
@@ -584,13 +684,13 @@ describe('ledgerUtil unit test', function () {
 
     describe('twitch', function () {
       it('we only have url', function () {
-        const result = ledgerUtil.getMediaProvider('https://api.mixpanel.com/?data=lll')
+        const result = ledgerUtil.getMediaProvider('https://ttvnw.net/v1/segment/sdfsdfsdfdsf')
         assert.equal(result, null)
       })
 
       it('video is on twitch.tv', function () {
         const result = ledgerUtil.getMediaProvider(
-          'https://api.mixpanel.com/?data=lll',
+          'https://ttvnw.net/v1/segment/sdfsdfsdfdsf',
           'https://www.twitch.tv/'
         )
         assert.equal(result, ledgerMediaProviders.TWITCH)
@@ -598,7 +698,7 @@ describe('ledgerUtil unit test', function () {
 
       it('video is embeded', function () {
         const result = ledgerUtil.getMediaProvider(
-          'https://api.mixpanel.com/?data=lll',
+          'https://ttvnw.net/v1/segment/sdfsdfsdfdsf',
           'https://www.site.tv/',
           'https://player.twitch.tv/'
         )

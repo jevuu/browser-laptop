@@ -50,6 +50,11 @@ const ledgerVideoCache = require('../../common/cache/ledgerVideoCache')
 const updater = require('../../updater')
 const promoCodeFirstRunStorage = require('../../promoCodeFirstRunStorage')
 const appUrlUtil = require('../../../js/lib/appUrlUtil')
+const urlutil = require('../../../js/lib/urlutil')
+const windowState = require('../../common/state/windowState')
+const {makeImmutable, makeJS, isList} = require('../../common/state/immutableUtil')
+const siteHacks = require('../../siteHacks')
+const UrlUtil = require('../../../js/lib/urlutil')
 
 // Caching
 let locationDefault = 'NOOP'
@@ -99,7 +104,7 @@ const clientOptions = {
   environment: process.env.LEDGER_ENVIRONMENT || 'production'
 }
 
-var platforms = {
+const platforms = {
   'darwin': 'osx',
   'win32x64': 'winx64',
   'win32ia32': 'winia32',
@@ -193,8 +198,13 @@ const paymentPresent = (state, tabId, present) => {
 
 const checkSeed = (state) => {
   const seed = ledgerState.getInfoProp(state, 'passphrase')
+  let localClient = client
 
-  if (seed && !client.isValidPassPhrase(seed)) {
+  if (!localClient) {
+    localClient = require('bat-client')
+  }
+
+  if (seed && localClient && !localClient.isValidPassPhrase(seed)) {
     state = ledgerState.setAboutProp(state, 'status', ledgerStatuses.CORRUPTED_SEED)
   }
 
@@ -255,7 +265,7 @@ const onBootStateFile = (state) => {
   }
 
   if (client.sync(callback) === true) {
-    run(state, random.randomInt({min: ledgerUtil.milliseconds.minute, max: 10 * ledgerUtil.milliseconds.minute}))
+    run(state, random.randomInt({min: ledgerUtil.milliseconds.minute, max: 5 * ledgerUtil.milliseconds.minute}))
   }
 
   module.exports.getBalance(state)
@@ -505,9 +515,6 @@ const synopsisNormalizer = (state, changedPublisher, returnState = true, prune =
       publisher.weight = 0
       return publisher
     })
-
-    // sync app store
-    state = ledgerState.changePinnedValues(state, dataPinned)
   } else if (dataUnPinned.length === 0 && pinnedTotal < 100) {
     // when you don't have any unpinned sites and pinned total is less then 100 %
     let changedObject = dataPinned.find(publisher => publisher.publisherKey === changedPublisher)
@@ -522,9 +529,6 @@ const synopsisNormalizer = (state, changedPublisher, returnState = true, prune =
       dataPinned = module.exports.normalizePinned(dataPinned, pinnedTotal, 100, false)
       dataPinned = module.exports.roundToTarget(dataPinned, 100, 'pinPercentage')
     }
-
-    // sync app store
-    state = ledgerState.changePinnedValues(state, dataPinned)
   } else {
     // unpinned publishers
     dataUnPinned = dataUnPinned.map((result) => {
@@ -973,11 +977,19 @@ const pageDataChanged = (state, viewData = {}, keepInfo = false) => {
 
   let info = pageDataState.getLastInfo(state)
   const tabId = viewData.tabId || pageDataState.getLastActiveTabId(state)
-  const location = viewData.location || locationDefault
+  let location = viewData.location || locationDefault
 
   if (!synopsis) {
     state = addNewLocation(state, locationDefault, tabId)
     return state
+  }
+
+  if (UrlUtil.isUrlPDF(location)) {
+    location = UrlUtil.getLocationIfPDF(location)
+    info = Immutable.fromJS({
+      key: location,
+      location: location
+    })
   }
 
   const realUrl = getSourceAboutUrl(location) || location
@@ -1159,6 +1171,12 @@ const onWalletRecovery = (state, error, result) => {
     // remove old QR codes and addresses
     state = ledgerState.setInfoProp(state, 'walletQR', Immutable.Map())
     state = ledgerState.setInfoProp(state, 'addresses', Immutable.Map())
+
+    const status = ledgerState.getAboutProp(state, 'status')
+
+    if (status === ledgerStatuses.CORRUPTED_SEED) {
+      state = ledgerState.setAboutProp(state, 'status', '')
+    }
 
     callback(error, result)
 
@@ -1647,9 +1665,13 @@ const getStateInfo = (state, parsedData) => {
     state = ledgerState.setAboutProp(state, 'status', ledgerStatuses.IN_PROGRESS)
   }
 
-  let passphrase = ledgerClient.prototype.getWalletPassphrase(parsedData)
-  if (passphrase) {
-    newInfo.passphrase = passphrase.join(' ')
+  try {
+    let passphrase = ledgerClient.prototype.getWalletPassphrase(parsedData)
+    if (passphrase) {
+      newInfo.passphrase = passphrase.join(' ')
+    }
+  } catch (e) {
+    console.error(e)
   }
 
   state = ledgerState.mergeInfoProp(state, newInfo)
@@ -1771,6 +1793,18 @@ const lockInContributionAmount = (state, balance) => {
       appActions.changeSetting(settings.PAYMENTS_CONTRIBUTION_AMOUNT, defaultFromConfig)
     }
   }
+}
+
+const setNewTimeUntilReconcile = (newReconcileTime = null) => {
+  client.setTimeUntilReconcile(newReconcileTime, (err, stateResult) => {
+    if (err) return console.error('ledger setTimeUntilReconcile error: ' + err.toString())
+
+    if (!stateResult) {
+      return
+    }
+
+    appActions.onTimeUntilReconcile(stateResult)
+  })
 }
 
 const onWalletProperties = (state, body) => {
@@ -1955,7 +1989,7 @@ const callback = (err, result, delayTime) => {
     if (!client) return
 
     if (typeof delayTime === 'undefined') {
-      delayTime = random.randomInt({min: ledgerUtil.milliseconds.minute, max: 10 * ledgerUtil.milliseconds.minute})
+      delayTime = random.randomInt({min: ledgerUtil.milliseconds.minute, max: 5 * ledgerUtil.milliseconds.minute})
     }
   }
 
@@ -2044,6 +2078,7 @@ const onCallback = (state, result, delayTime) => {
 
 const onReferralCodeRead = (code) => {
   if (!code) {
+    fetchReferralHeaders()
     return
   }
 
@@ -2072,7 +2107,7 @@ const onReferralInit = (err, response, body) => {
   }
 
   if (body && body.download_id) {
-    appActions.onReferralCodeRead(body.download_id, body.referral_code)
+    appActions.onReferralCodeRead(body)
     promoCodeFirstRunStorage
       .removePromoCode()
       .catch(error => {
@@ -2086,6 +2121,60 @@ const onReferralInit = (err, response, body) => {
   if (clientOptions.verboseP) {
     console.error(`Referral check was not successful ${body}`)
   }
+}
+
+const onReferralRead = (state, body, activeWindowId) => {
+  body = makeImmutable(body)
+
+  if (body.has('offer_page_url')) {
+    const url = body.get('offer_page_url')
+    if (urlutil.isURL(url)) {
+      if (activeWindowId === windowState.WINDOW_ID_NONE) {
+        state = updateState.setUpdateProp(state, 'referralPage', url)
+      } else {
+        appActions.createTabRequested({
+          url,
+          windowId: activeWindowId
+        })
+        state = updateState.setUpdateProp(state, 'referralPage', null)
+      }
+    }
+  }
+
+  if (body.has('headers')) {
+    const headers = body.get('headers')
+    state = updateState.setUpdateProp(state, 'referralHeaders', headers)
+    siteHacks.setReferralHeaders(headers)
+  }
+
+  state = updateState.setUpdateProp(state, 'referralDownloadId', body.get('download_id'))
+  state = updateState.setUpdateProp(state, 'referralPromoCode', body.get('referral_code'))
+
+  return state
+}
+
+const fetchReferralHeaders = () => {
+  module.exports.roundtrip({
+    server: referralServer,
+    method: 'GET',
+    path: '/promo/custom-headers'
+  }, {}, appActions.onFetchReferralHeaders)
+}
+
+const onFetchReferralHeaders = (state, err, response, body) => {
+  if (err) {
+    if (clientOptions.verboseP) {
+      console.error(makeJS(err))
+    }
+    return state
+  }
+
+  if (body && isList(body)) {
+    state = updateState.setUpdateProp(state, 'referralHeaders', body)
+    siteHacks.setReferralHeaders(body)
+  }
+
+  return state
 }
 
 const initialize = (state, paymentsEnabled) => {
@@ -2123,8 +2212,14 @@ const initialize = (state, paymentsEnabled) => {
         if (clientOptions.verboseP) {
           console.error('read error: ' + error.toString())
         }
+        fetchReferralHeaders()
       })
+  } else {
+    fetchReferralHeaders()
   }
+
+  // Get referral headers every day
+  setInterval(() => fetchReferralHeaders, (24 * ledgerUtil.milliseconds.hour))
 
   if (!paymentsEnabled) {
     client = null
@@ -2233,15 +2328,7 @@ const onInitRead = (state, parsedData) => {
 
     let ledgerWindow = (ledgerState.getSynopsisOption(state, 'numFrames') - 1) * ledgerState.getSynopsisOption(state, 'frameSize')
     if (typeof timeUntilReconcile === 'number' && timeUntilReconcile < -ledgerWindow) {
-      client.setTimeUntilReconcile(null, (err, stateResult) => {
-        if (err) return console.error('ledger setTimeUntilReconcile error: ' + err.toString())
-
-        if (!stateResult) {
-          return
-        }
-
-        appActions.onTimeUntilReconcile(stateResult)
-      })
+      setNewTimeUntilReconcile()
     }
   } catch (ex) {
     console.error('ledger client creation error(1): ', ex)
@@ -2279,7 +2366,7 @@ const onTimeUntilReconcile = (state, stateResult) => {
 
 const onLedgerFirstSync = (state, parsedData) => {
   if (client.sync(callback) === true) {
-    run(state, random.randomInt({min: ledgerUtil.milliseconds.minute, max: 10 * ledgerUtil.milliseconds.minute}))
+    run(state, random.randomInt({min: ledgerUtil.milliseconds.minute, max: 5 * ledgerUtil.milliseconds.minute}))
   }
 
   return cacheRuleSet(state, parsedData.ruleset)
@@ -2304,6 +2391,10 @@ const run = (state, delayTime) => {
       fields.forEach((field) => {
         const max = (result.length > 0) ? 45 : 19
 
+        if (!field) {
+          return
+        }
+
         if (typeof field !== 'string') field = field.toString()
         if (field.length < max) {
           let spaces = ' '.repeat(max - field.length)
@@ -2311,6 +2402,7 @@ const run = (state, delayTime) => {
         } else {
           field = field.substr(0, max)
         }
+
         result += ' ' + field
       })
 
@@ -2338,6 +2430,11 @@ const run = (state, delayTime) => {
 
   if (state == null || typeof delayTime === 'undefined' || !client) {
     return
+  }
+
+  const publishers = ledgerState.getPublisher(state)
+  if (publishers.isEmpty() && client.isReadyToReconcile(synopsis)) {
+    setNewTimeUntilReconcile()
   }
 
   let winners
@@ -2402,7 +2499,7 @@ const run = (state, delayTime) => {
       delayTime = false
     }
     if (delayTime === false) {
-      delayTime = random.randomInt({min: ledgerUtil.milliseconds.minute, max: 10 * ledgerUtil.milliseconds.minute})
+      delayTime = random.randomInt({min: ledgerUtil.milliseconds.minute, max: 5 * ledgerUtil.milliseconds.minute})
     }
   }
 
@@ -2451,7 +2548,7 @@ const onNetworkConnected = (state) => {
   }
 
   if (client.sync(callback) === true) {
-    const delayTime = random.randomInt({min: ledgerUtil.milliseconds.minute, max: 10 * ledgerUtil.milliseconds.minute})
+    const delayTime = random.randomInt({min: ledgerUtil.milliseconds.minute, max: 5 * ledgerUtil.milliseconds.minute})
     run(state, delayTime)
   }
 
@@ -2584,12 +2681,35 @@ const deleteSynopsis = () => {
 }
 
 let currentMediaKey = null
-const onMediaRequest = (state, xhr, type, tabId) => {
+const onMediaRequest = (state, xhr, type, details) => {
   if (!xhr || type == null) {
     return state
   }
 
-  const parsed = ledgerUtil.getMediaData(xhr, type)
+  const parsed = ledgerUtil.getMediaData(xhr, type, details)
+  if (parsed == null) {
+    return state
+  }
+
+  if (Array.isArray(parsed)) {
+    parsed.forEach(data => {
+      if (data) {
+        state = module.exports.processMediaData(state, data, type, details)
+      }
+    })
+  } else {
+    state = module.exports.processMediaData(state, parsed, type, details)
+  }
+
+  return state
+}
+
+const processMediaData = (state, parsed, type, details) => {
+  let tabId = tabState.TAB_ID_NONE
+  if (details) {
+    tabId = details.get('tabId')
+  }
+
   const mediaId = ledgerUtil.getMediaId(parsed, type)
 
   if (clientOptions.loggingP) {
@@ -2671,7 +2791,7 @@ const onMediaRequest = (state, xhr, type, tabId) => {
 
     if (_internal.verboseP) {
       console.log('\ngetPublisherFromMediaProps mediaProps=' + JSON.stringify(mediaProps, null, 2) + '\nresponse=' +
-                  JSON.stringify(response, null, 2))
+        JSON.stringify(response, null, 2))
     }
 
     appActions.onLedgerMediaPublisher(mediaKey, response, duration, revisited)
@@ -2807,15 +2927,7 @@ const onPromotionResponse = (state, status) => {
   const minTimestamp = ledgerState.getPromotionProp(state, 'minimumReconcileTimestamp')
 
   if (minTimestamp > currentTimestamp) {
-    client.setTimeUntilReconcile(minTimestamp, (err, stateResult) => {
-      if (err) return console.error('ledger setTimeUntilReconcile error: ' + err.toString())
-
-      if (!stateResult) {
-        return
-      }
-
-      appActions.onTimeUntilReconcile(stateResult)
-    })
+    setNewTimeUntilReconcile(minTimestamp)
   }
 
   if (togglePromotionTimeoutId) {
@@ -2964,7 +3076,10 @@ const getMethods = () => {
     checkReferralActivity,
     setPublishersOptions,
     referralCheck,
-    roundtrip
+    roundtrip,
+    onFetchReferralHeaders,
+    onReferralRead,
+    processMediaData
   }
 
   let privateMethods = {}

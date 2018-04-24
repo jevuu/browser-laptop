@@ -45,6 +45,14 @@ let generateBraveManifest = () => {
       {
         run_at: 'document_start',
         all_frames: true,
+        matches: ['https://www.marketwatch.com/*'],
+        css: [
+          'content/styles/siteHack-marketwatch.com.css'
+        ]
+      },
+      {
+        run_at: 'document_start',
+        all_frames: true,
         matches: ['http://www.glennbeck.com/*'],
         js: [
           'content/scripts/siteHack-glennbeck.com.js'
@@ -468,7 +476,7 @@ module.exports.init = () => {
       manifest = {
         name: 'PDF Viewer',
         manifest_version: 2,
-        version: '1.9.457',
+        version: '1.9.459',
         description: 'Uses HTML5 to display PDF files directly in the browser.',
         icons: {
           '128': 'icon128.png',

@@ -4,11 +4,10 @@
 
 const appActions = require('../../js/actions/appActions')
 const tabActions = require('../common/actions/tabActions')
-const config = require('../../js/constants/config')
 const Immutable = require('immutable')
 const { shouldDebugTabEvents } = require('../cmdLine')
 const tabState = require('../common/state/tabState')
-const {app, BrowserWindow, extensions, session, ipcMain} = require('electron')
+const {app, extensions, session, ipcMain} = require('electron')
 const {makeImmutable, makeJS} = require('../common/state/immutableUtil')
 const {getTargetAboutUrl, getSourceAboutUrl, isSourceAboutUrl, newFrameUrl, isTargetAboutUrl, isIntermediateAboutPage, isTargetMagnetUrl, getSourceMagnetUrl} = require('../../js/lib/appUrlUtil')
 const {isURL, getUrlFromInput, toPDFJSLocation, getDefaultFaviconUrl, isHttpOrHttps, getLocationIfPDF} = require('../../js/lib/urlutil')
@@ -438,29 +437,6 @@ const createNavigationState = (navigationHandle, controller) => {
   })
 }
 
-let backgroundProcess = null
-let backgroundProcessTimer = null
-/**
- * Execute script in the browser tab
- * @param win{object} - window in which we want to execute script
- * @param debug{boolean} - would you like to close window or not
- * @param script{string} - script that you want to execute
- * @param cb{function} - function that we call after script is completed
- */
-const runScript = (win, debug, script, cb) => {
-  win.webContents.executeScriptInTab(config.braveExtensionId, script, {}, (err, url, result) => {
-    cb(err, url, result)
-    if (!debug) {
-      backgroundProcessTimer = setTimeout(() => {
-        if (backgroundProcess) {
-          win.close()
-          backgroundProcess = null
-        }
-      }, 2 * 60 * 1000) // 2 min
-    }
-  })
-}
-
 const api = {
   init: (state, action) => {
     process.on('open-url-from-tab', (e, source, targetUrl, disposition) => {
@@ -860,11 +836,12 @@ const api = {
     const tabId = action.get('tabId')
     const tab = webContentsCache.getWebContents(tabId)
     if (tab && !tab.isDestroyed()) {
-      let url = normalizeUrl(action.get('url'))
+      const url = normalizeUrl(action.get('url'))
+      const currentUrl = tab.getURL()
       // We only allow loading URLs explicitly when the origin is
       // the same for pinned tabs.  This is to help preserve a users
       // pins.
-      if (tab.pinned && getOrigin(tab.getURL()) !== getOrigin(url)) {
+      if (tab.pinned && getOrigin(currentUrl) !== getOrigin(url)) {
         api.create({
           url,
           partition: tab.session.partition
@@ -872,7 +849,12 @@ const api = {
         return
       }
 
-      tab.loadURL(url)
+      const reloadMatchingUrl = action.get('reloadMatchingUrl') || false
+      if (reloadMatchingUrl && currentUrl === url) {
+        tab.reload(true)
+      } else {
+        tab.loadURL(url)
+      }
     }
   },
 
@@ -1039,34 +1021,6 @@ const api = {
       }
       doCreate()
     })
-  },
-
-  /**
-   * Execute script in the background browser window
-   * @param script{string} - script that we want to run
-   * @param cb{function} - function that we want to call when script is done
-   * @param debug{boolean} - would you like to keep browser window when script is done
-   */
-  executeScriptInBackground: (script, cb, debug = false) => {
-    if (backgroundProcessTimer) {
-      clearTimeout(backgroundProcessTimer)
-    }
-
-    if (backgroundProcess === null) {
-      backgroundProcess = new BrowserWindow({
-        show: debug,
-        webPreferences: {
-          partition: 'default'
-        }
-      })
-
-      backgroundProcess.webContents.on('did-finish-load', () => {
-        runScript(backgroundProcess, debug, script, cb)
-      })
-      backgroundProcess.loadURL('about:blank')
-    } else {
-      runScript(backgroundProcess, debug, script, cb)
-    }
   },
 
   moveTo: (state, tabId, frameOpts, browserOpts, toWindowId) => {
@@ -1406,7 +1360,29 @@ const api = {
     return state
   },
   forgetTab: (tabId) => {
-    webContentsCache.cleanupWebContents(tabId)
+    const tab = webContentsCache.getWebContents(tabId)
+    if (!tab) {
+      // perhaps tab was set to be null, but other cache data still exists
+      webContentsCache.cleanupWebContents(tabId)
+      return
+    }
+    // Do not remove tab until it is destroyed, as we still need to refer to it,
+    // even though state has let us know it does not care about the tab anymore
+    // But, we do this here in case state still needs to refer to tab
+    // after it is destroyed, for a brief time.
+    if (tab.isDestroyed()) {
+      if (shouldDebugTabEvents) {
+        console.log(`Tab [${tabId}] forgetTab: is already destroyed, cleaning up webContents from cache immediately`)
+      }
+      webContentsCache.cleanupWebContents(tabId)
+    } else {
+      tab.once('destroyed', function () {
+        if (shouldDebugTabEvents) {
+          console.log(`Tab [${tabId}] forgetTab: 'destroyed' emitted, cleaning up webContents from cache`)
+        }
+        webContentsCache.cleanupWebContents(tabId)
+      })
+    }
   }
 }
 

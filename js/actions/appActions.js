@@ -37,6 +37,16 @@ const appActions = {
     })
   },
 
+  /**
+   * Dispatches an event to the main process to focus the active window,
+   * or create a new one if there is no active window.
+   */
+  focusOrCreateWindow: function () {
+    dispatch({
+      actionType: appConstants.APP_FOCUS_OR_CREATE_WINDOW
+    })
+  },
+
   windowReady: function (windowId, windowValue) {
     dispatch({
       actionType: appConstants.APP_WINDOW_READY,
@@ -235,12 +245,13 @@ const appActions = {
    * switch to it instead of creating a new one
    * @param {Boolean} isRestore when true, won't try to activate the new tab, even if the user preference indicates to
    */
-  createTabRequested: function (createProperties, activateIfOpen = false, isRestore = false) {
+  createTabRequested: function (createProperties, activateIfOpen = false, isRestore = false, focusWindow = false) {
     dispatch({
       actionType: appConstants.APP_CREATE_TAB_REQUESTED,
       createProperties,
       activateIfOpen,
-      isRestore
+      isRestore,
+      focusWindow
     })
   },
 
@@ -255,12 +266,14 @@ const appActions = {
    * A request for a URL load
    * @param {number} tabId - the tab ID to load the URL inside of
    * @param {string} url - The url to load
+   * @param {boolean} reloadMatchingUrl - would you like to force reload provided tab
    */
-  loadURLRequested: function (tabId, url) {
+  loadURLRequested: function (tabId, url, reloadMatchingUrl) {
     dispatch({
       actionType: appConstants.APP_LOAD_URL_REQUESTED,
       tabId,
-      url
+      url,
+      reloadMatchingUrl
     })
   },
 
@@ -1803,28 +1816,6 @@ const appActions = {
   },
 
   /**
-   * Dispatches a message that bookmark calculation was done
-   * @param bookmarkList {Object} - Object is a list of bookmarks with key, width and parentFolderId as a property
-   */
-  onBookmarkWidthChanged: function (bookmarkList) {
-    dispatch({
-      actionType: appConstants.APP_ON_BOOKMARK_WIDTH_CHANGED,
-      bookmarkList
-    })
-  },
-
-  /**
-   * Dispatches a message that bookmark calculation was done
-   * @param folderList {Object} - Object is a list of folders with key, width and parentFolderId as a property
-   */
-  onBookmarkFolderWidthChanged: function (folderList) {
-    dispatch({
-      actionType: appConstants.APP_ON_BOOKMARK_FOLDER_WIDTH_CHANGED,
-      folderList
-    })
-  },
-
-  /**
    * Dispatches a message that window was resized
    * @param windowValue - window properties
    * @param windowId - id of the window that we want to update
@@ -1897,12 +1888,12 @@ const appActions = {
     })
   },
 
-  onLedgerMediaData: function (url, type, tabId) {
+  onLedgerMediaData: function (url, type, details) {
     dispatch({
       actionType: appConstants.APP_ON_LEDGER_MEDIA_DATA,
       url,
       type,
-      tabId
+      details
     })
   },
 
@@ -1913,17 +1904,25 @@ const appActions = {
     })
   },
 
-  onReferralCodeRead: function (downloadId, promoCode) {
+  onReferralCodeRead: function (body) {
     dispatch({
       actionType: appConstants.APP_ON_REFERRAL_CODE_READ,
-      downloadId,
-      promoCode
+      body
     })
   },
 
   onReferralCodeFail: function () {
     dispatch({
       actionType: appConstants.APP_ON_REFERRAL_CODE_FAIL
+    })
+  },
+
+  onFetchReferralHeaders: function (error, response, body) {
+    dispatch({
+      actionType: appConstants.APP_ON_FETCH_REFERRAL_HEADERS,
+      error,
+      response,
+      body
     })
   },
 
@@ -1949,6 +1948,14 @@ const appActions = {
   onHistoryLimit: function () {
     dispatch({
       actionType: appConstants.APP_ON_HISTORY_LIMIT
+    })
+  },
+
+  onLedgerPinPublisher: function (publisherKey, value) {
+    dispatch({
+      actionType: appConstants.APP_ON_LEDGER_PIN_PUBLISHER,
+      publisherKey,
+      value
     })
   },
 

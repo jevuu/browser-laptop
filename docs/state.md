@@ -63,8 +63,7 @@ AppStore
       parentFolderId: number,
       partitionNumber: number, // optionally specifies a specific session
       skipSync: boolean,
-      title: string,
-      width: float // bookmark text width
+      title: string
     }
   },
   bookmarkFolders: {
@@ -75,8 +74,7 @@ AppStore
       originalSeed: Array.<number>, // only set for bookmarks that have been synced before a sync profile reset
       parentFolderId: number, // set for bookmarks and bookmark folders only
       skipSync: boolean, // Set for objects FETCHed by sync
-      title: string,
-      width: float // bookmark folder text width
+      title: string
     }
   },
   cache: {
@@ -514,6 +512,7 @@ AppStore
   siteSettings: {
     [hostPattern]: {
       adControl: string, // (showBraveAds | blockAds | allowAdsAndTracking)
+      autoplay: boolean,
       cookieControl: string, // (block3rdPartyCookie | allowAllCookies | blockAllCookies)
       fingerprintingProtection: string, // (block3rdPartyFingerprinting | allowAllFingerprinting | blockAllFingerprinting)
       flash: (number|boolean), // approval expiration time if allowed, false if never allow
@@ -522,7 +521,6 @@ AppStore
       httpsEverywhere: boolean,
       ledgerPayments: boolean, // false if site should not be paid by the ledger. Defaults to true.
       ledgerPaymentsShown: boolean, // false if site should not be paid by the ledger and should not be shown in the UI. Defaults to true.
-      ledgerPinPercentage: number, // 0 if not pinned, otherwise is pinned with defined percentage
       mediaPermission: boolean,
       midiSysexPermission: boolean,
       notificationsPermission: boolean,
@@ -532,14 +530,14 @@ AppStore
       openExternalPermission: boolean,
       pointerLockPermission: boolean,
       protocolRegistrationPermission: boolean,
-      skipSync: boolean, // Set for objects FETCHed by sync
       runInsecureContent: boolean, // allow active mixed content
       safeBrowsing: boolean,
+      siteName: string, // display name of the publisher
+      skipSync: boolean, // Set for objects FETCHed by sync
       savePasswords: boolean, // only false or undefined/null
       shieldsUp: boolean,
       widevine: (number|boolean), // false = block widevine, 0 = allow once, 1 = allow always
-      zoomLevel: number,
-      autoplay: boolean,
+      zoomLevel: number
     }
   },
   defaultSiteSettingsListImported: boolean,
@@ -603,7 +601,19 @@ AppStore
       notes: string // release notes for the active update
     },
     referralDownloadId: string, // download ID that is returned from the referral server
+    referralHeaders: [{
+      domains: Array<string>,
+      headers: [{
+        domains: Array<string>,
+        headers: { [headerName]: string },
+        cookieNames: Array<string>,
+        expiration: number
+      }],
+      cookieNames: Array<string>,
+      expiration: number
+    }],
     referralTimestamp: number, // timestamp when referral was accumulated (after ~30 days)
+    referralPage: string, // page that we open when browser starts
     referralPromoCode: string, // promo code for the referral
     status: string, // updateStatus from js/constants/updateStatus.js
     verbose: boolean // whether to show update UI for checking, downloading, and errors
@@ -619,10 +629,6 @@ AppStore
   },
   windows: [{
     // persistent properties
-    bookmarksToolbar: {
-      toolbar: Array<string>, // bookmark and folder keys that we want to display
-      other: Array<string> // bookmark and folder keys that we display in more menu (limited to 100)
-    },
     focused: boolean,
     height: number,
     left: number,
@@ -818,6 +824,7 @@ WindowStore
     top: number // the top position of the popup window
   },
   previewFrameKey: number,
+  quarantineNeeded: boolean, // true if quarantine needed after auto-launching
   searchResults: array, // autocomplete server results if enabled
   ui: {
     bookmarksToolbar: {
